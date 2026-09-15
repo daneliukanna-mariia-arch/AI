@@ -1,69 +1,121 @@
-
-import tkinter as tk
-from tkinter import filedialog
-from PIL import Image, ImageTk
+import io
+import panel as pn
+from PIL import Image, ImageDraw
 import numpy as np
 
-class FeatureExtractorApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Лабораторна 1 - Завдання 1: Вектори ознак")
-        self.root.geometry("700x500")
+# Ініціалізація розширень Panel
+pn.extension()
 
-        self.grid_rows = 5
-        self.grid_cols = 4
+GRID_ROWS = 5
+GRID_COLS = 5
 
-        self.btn_load = tk.Button(root, text="Завантажити зображення (.bmp)", command=self.load_image)
-        self.btn_load.pack(pady=10)
 
-        self.lbl_img = tk.Label(root)
-        self.lbl_img.pack()
+def calculate_feature_vector(image):
+    image = image.convert("L")
+    width, height = image.size
+    pixels = np.array(image)
+    cell_width = width / GRID_COLS
+    cell_height = height / GRID_ROWS
+    absolute_vector = []
+    
+    for row in range(GRID_ROWS):
+        for col in range(GRID_COLS):
+            x1 = int(col * cell_width)
+            x2 = int((col + 1) * cell_width)
+            y1 = int(row * cell_height)
+            y2 = int((row + 1) * cell_height)
 
-        self.text_output = tk.Text(root, height=12, width=80)
-        self.text_output.pack(pady=10)
+            cell = pixels[y1:y2, x1:x2]
+            black_pixels = np.sum(cell < 128)
+            absolute_vector.append(int(black_pixels))
 
-    def load_image(self):
-        file_path = filedialog.askopenfilename(filetypes=[("BMP files", "*.bmp"), ("All files", "*.*")])
-        if not file_path:
-            return
+    total_black_pixels = sum(absolute_vector)
+
+    if total_black_pixels > 0:
+        normalized_vector = [
+            round(value / total_black_pixels, 4)
+            for value in absolute_vector
+        ]
+    else:
+        normalized_vector = [0.0] * len(absolute_vector)
+
+    grid_image = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(grid_image)
+
+    for col in range(1, GRID_COLS):
+        x = int(col * cell_width)
+        draw.line((x, 0, x, height), fill="red", width=2)
+
+    for row in range(1, GRID_ROWS):
+        y = int(row * cell_height)
+        draw.line((0, y, width, y), fill="red", width=2)
+
+    absolute_text = "Абсолютний вектор ознак:\n\n" + str(absolute_vector)
+    normalized_text = "Нормований вектор ознак:\n\n" + str(normalized_vector)
+
+    return absolute_text, normalized_text, grid_image
+
+
+# Створення елементів інтерфейсу (віджетів)
+file_input = pn.widgets.FileInput(accept=".bmp,image/*", name="Завантажте BMP-зображення")
+calc_button = pn.widgets.Button(name="Побудувати вектор ознак", button_type="primary")
+
+input_image_pane = pn.pane.Image(sizing_mode="scale_width", width=300)
+grid_output_pane = pn.pane.Image(sizing_mode="scale_width", width=300)
+
+absolute_output = pn.widgets.TextAreaInput(name="Абсолютний вектор ознак", rows=8, disabled=True)
+normalized_output = pn.widgets.TextAreaInput(name="Нормований вектор ознак", rows=8, disabled=True)
+
+
+# Логіка обробки натискання кнопки
+def on_click(event):
+    if not file_input.value:
+        absolute_output.value = "Зображення не завантажено."
+        normalized_output.value = ""
+        grid_output_pane.object = None
+        input_image_pane.object = None
+        return
+
+    try:
+        image = Image.open(io.BytesIO(file_input.value))
+        input_image_pane.object = image
         
-        img = Image.open(file_path).convert('L')
+        abs_text, norm_text, grid_img = calculate_feature_vector(image)
+        absolute_output.value = abs_text
+        normalized_output.value = norm_text
+        grid_output_pane.object = grid_img
+    except Exception as e:
+        absolute_output.value = f"Помилка обробки зображення: {e}"
+        normalized_output.value = ""
+        grid_output_pane.object = None
+
+
+calc_button.on_click(on_click)
+
+# Побудова макету сторінки
+layout = pn.Column(
+    pn.pane.Markdown(
+        """
+        # Система побудови вектора ознак
+
+        Завантажте чорно-біле зображення у форматі BMP.
         
-        display_img = img.resize((200, 250))
-        self.photo = ImageTk.PhotoImage(display_img)
-        self.lbl_img.config(image=self.photo)
+        Програма розділить його на сітку 5×5,
+        порахує кількість чорних пікселів у кожній області
+        та сформує абсолютний і нормований вектори ознак.
+        """
+    ),
+    pn.Row(
+        pn.Column(file_input, calc_button, input_image_pane),
+        pn.Column(grid_output_pane)
+    ),
+    pn.pane.Markdown("## Результати"),
+    pn.Row(
+        absolute_output,
+        normalized_output
+    ),
+    sizing_mode="stretch_width"
+)
 
-        absolute_vector, normalized_vector = self.extract_features(img)
-
-        self.text_output.delete("1.0", tk.END)
-        self.text_output.insert(tk.END, f"Абсолютний вектор ознак (розмір {len(absolute_vector)}):\n{absolute_vector}\n\n")
-        self.text_output.insert(tk.END, f"Нормований вектор ознак:\n{normalized_vector}")
-
-    def extract_features(self, img):
-        img_np = np.array(img)
-        h, w = img_np.shape
-        
-        cell_h = h / self.grid_rows
-        cell_w = w / self.grid_cols
-        
-        absolute_vector = []
-        for r in range(self.grid_rows):
-            for c in range(self.grid_cols):
-                y1, y2 = int(r * cell_h), int((r + 1) * cell_h)
-                x1, x2 = int(c * cell_w), int((c + 1) * cell_w)
-                
-                cell = img_np[y1:y2, x1:x2]
-                dark_pixels = np.sum(cell < 128)  # Підрахунок темних пікселів
-                absolute_vector.append(int(dark_pixels))
-                
-        abs_arr = np.array(absolute_vector, dtype=float)
-        norm_sum = np.sum(abs_arr)
-        normalized_vector = (abs_arr / norm_sum).tolist() if norm_sum > 0 else abs_arr.tolist()
-            
-        return absolute_vector, normalized_vector
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = FeatureExtractorApp(root)
-    root.mainloop()
-
+# Запуск додатку
+layout.servable()
