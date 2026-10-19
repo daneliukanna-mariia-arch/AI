@@ -1,0 +1,4 @@
+bokeh==3.9.2
+numpy==2.5.3
+panel==1.9.4
+panel-material-ui==0.14.2
