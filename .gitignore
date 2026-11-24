@@ -1,6 +1,6 @@
 .venv/
 __pycache__/
 .DS_Store
- lab6/*
- !lab6/*.py
- !lab6/*.docx
+ README.md
+ requirements.txt
+ results.csv
